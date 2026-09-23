@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDA VSEG — STL Viewer</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: rgba(22, 28, 36, 0.92);
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #5eb1ff;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+    #canvas-wrap { position: absolute; inset: 0; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    .panel {
+      position: absolute;
+      z-index: 2;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .top-left { top: 16px; left: 16px; max-width: min(340px, calc(100vw - 32px)); }
+    .top-right { top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; }
+    h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+    .sub { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .hint { margin-top: 10px; font-size: 11px; color: var(--muted); line-height: 1.45; }
+    .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; }
+    .row label { min-width: 72px; color: var(--muted); }
+    input[type="range"] { flex: 1; accent-color: var(--accent); }
+    input[type="color"] { width: 36px; height: 28px; border: none; background: none; cursor: pointer; padding: 0; }
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.18); }
+    button.active { background: rgba(94, 177, 255, 0.22); border-color: var(--accent); color: #fff; }
+
+    #status {
+      position: absolute;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      z-index: 2;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-size: 13px;
+      color: var(--muted);
+      max-width: min(520px, calc(100vw - 32px));
+      text-align: center;
+    }
+    #status.error { color: #ff8f8f; }
+    #status.ready { display: none; }
+
+    .progress {
+      margin-top: 12px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3d8fd1, #5eb1ff);
+      transition: width 0.15s ease;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-wrap"></div>
+
+  <div class="panel top-left">
+    <h1>PDA VSEG</h1>
+    <div class="sub" id="meta">Loading 3794038717_PDA_VSEG.stl…</div>
+    <div class="progress" id="bar-wrap" hidden><span id="bar"></span></div>
+    <div class="row">
+      <label for="color">Color</label>
+      <input id="color" type="color" value="#e8be9a" />
+    </div>
+    <div class="row">
+      <label for="opacity">Opacity</label>
+      <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
+    </div>
+    <div class="hint">Drag to rotate · scroll to zoom · right-drag / two-finger to pan</div>
+  </div>
+
+  <div class="panel top-right">
+    <button id="btn-reset" type="button">Reset view</button>
+    <button id="btn-wire" type="button">Wireframe</button>
+    <button id="btn-axes" type="button">Axes</button>
+    <button id="btn-fit" type="button">Fit to view</button>
+  </div>
+
+  <div id="status">Preparing viewer…</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { STLLoader } from "three/addons/loaders/STLLoader.js";
+
+    const STL_URL = "./3794038717_PDA_VSEG.stl";
+
+    const wrap = document.getElementById("canvas-wrap");
+    const statusEl = document.getElementById("status");
+    const metaEl = document.getElementById("meta");
+    const barWrap = document.getElementById("bar-wrap");
+    const bar = document.getElementById("bar");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1419);
+    scene.fog = new THREE.Fog(0x0f1419, 80, 400);
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 5000);
+    camera.position.set(2.5, 1.8, 2.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    wrap.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.screenSpacePanning = true;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+    const key = new THREE.DirectionalLight(0xffffff, 1.05);
+    key.position.set(3, 5, 2);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xa8c8ff, 0.35);
+    fill.position.set(-4, -1, -2);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffd8b0, 0.25);
+    rim.position.set(0, 2, -4);
+    scene.add(rim);
+
+    const axes = new THREE.AxesHelper(1.5);
+    axes.visible = false;
+    scene.add(axes);
+
+    let mesh = null;
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(document.getElementById("color").value),
+      metalness: 0.02,
+      roughness: 0.55,
+      side: THREE.DoubleSide,
+      flatShading: true,
+    });
+
+    function setStatus(text, kind = "") {
+      statusEl.textContent = text;
+      statusEl.className = kind;
+    }
+
+    function resize() {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      camera.aspect = w / Math.max(h, 1);
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    function fitCamera(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+      const dist = maxDim / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      const offset = dist * 1.65;
+
+      controls.target.copy(center);
+      camera.position.set(center.x + offset * 0.7, center.y + offset * 0.45, center.z + offset * 0.7);
+      camera.near = maxDim / 200;
+      camera.far = maxDim * 50;
+      camera.updateProjectionMatrix();
+      controls.update();
+
+      axes.position.copy(center);
+      axes.scale.setScalar(maxDim * 0.15);
+      scene.fog.near = offset * 2;
+      scene.fog.far = offset * 8;
+    }
+
+    function formatNum(n) {
+      return n.toLocaleString("en-US");
+    }
+
+    const loader = new STLLoader();
+    barWrap.hidden = false;
+    setStatus("Downloading STL (≈34 MB)…");
+
+    loader.load(
+      STL_URL,
+      (geometry) => {
+        geometry.computeBoundingBox();
+        geometry.computeVertexNormals();
+
+        mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        fitCamera(mesh);
+
+        const tris = geometry.index
+          ? geometry.index.count / 3
+          : geometry.attributes.position.count / 3;
+        const box = geometry.boundingBox;
+        const size = new THREE.Vector3();
+        box.getSize(size);
+
+        metaEl.innerHTML =
+          `${formatNum(Math.round(tris))} triangles<br>` +
+          `bbox ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)}`;
+        barWrap.hidden = true;
+        setStatus("Ready", "ready");
+      },
+      (ev) => {
+        if (!ev.total) {
+          setStatus(`Loading… ${Math.round(ev.loaded / 1e6)} MB`);
+          return;
+        }
+        const pct = Math.min(100, (100 * ev.loaded) / ev.total);
+        bar.style.width = `${pct}%`;
+        setStatus(`Loading… ${pct.toFixed(0)}%`);
+      },
+      (err) => {
+        console.error(err);
+        barWrap.hidden = true;
+        setStatus(
+          "Failed to load STL. Serve this folder over HTTP (not file://), e.g. python3 -m http.server",
+          "error"
+        );
+      }
+    );
+
+    document.getElementById("color").addEventListener("input", (e) => {
+      material.color.set(e.target.value);
+    });
+    document.getElementById("opacity").addEventListener("input", (e) => {
+      const v = Number(e.target.value);
+      material.opacity = v;
+      material.transparent = v < 1;
+      material.depthWrite = v >= 0.99;
+      material.needsUpdate = true;
+    });
+    document.getElementById("btn-reset").addEventListener("click", () => {
+      if (mesh) fitCamera(mesh);
+    });
+    document.getElementById("btn-fit").addEventListener("click", () => {
+      if (mesh) fitCamera(mesh);
+    });
+    const btnWire = document.getElementById("btn-wire");
+    btnWire.addEventListener("click", () => {
+      material.wireframe = !material.wireframe;
+      btnWire.classList.toggle("active", material.wireframe);
+    });
+    const btnAxes = document.getElementById("btn-axes");
+    btnAxes.addEventListener("click", () => {
+      axes.visible = !axes.visible;
+      btnAxes.classList.toggle("active", axes.visible);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
