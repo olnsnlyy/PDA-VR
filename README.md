@@ -1,12 +1,14 @@
-# PDA VSEG STL Viewer
+# PDA-VR
 
 Interactive 3D viewer for `3794038717_PDA_VSEG.stl`.
 
 ## View online
 
-After GitHub Pages is enabled (Settings → Pages → Deploy from branch `main` / root):
+Enable GitHub Pages: **Settings → Pages → Branch `main` / root (`/`) → Save**
 
-https://olnsnlyy.github.io/pda-vseg-viewer/
+Then open:
+
+https://olnsnlyy.github.io/PDA-VR/
 
 ## Local
 
