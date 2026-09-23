@@ -88,8 +88,12 @@
 
   <div class="panel top-left">
     <h1>PDA VSEG</h1>
-    <div class="sub" id="meta">Loading 3794038717_PDA_VSEG.stl…</div>
+    <div class="sub" id="meta">Open an STL file from your computer</div>
     <div class="progress" id="bar-wrap" hidden><span id="bar"></span></div>
+    <div class="row" style="margin-top:12px">
+      <button id="btn-open" type="button">Open STL…</button>
+      <input id="file" type="file" accept=".stl,model/stl,application/sla" hidden />
+    </div>
     <div class="row">
       <label for="color">Color</label>
       <input id="color" type="color" value="#e8be9a" />
@@ -98,7 +102,7 @@
       <label for="opacity">Opacity</label>
       <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
     </div>
-    <div class="hint">Drag to rotate · scroll to zoom · right-drag / two-finger to pan</div>
+    <div class="hint">STL stays on your PC — nothing is uploaded. Drag to rotate · scroll to zoom · right-drag to pan</div>
   </div>
 
   <div class="panel top-right">
@@ -108,7 +112,7 @@
     <button id="btn-fit" type="button">Fit to view</button>
   </div>
 
-  <div id="status">Preparing viewer…</div>
+  <div id="status">Choose an STL file to view</div>
 
   <script type="importmap">
   {
@@ -123,13 +127,12 @@
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
-    const STL_URL = "./3794038717_PDA_VSEG.stl";
-
     const wrap = document.getElementById("canvas-wrap");
     const statusEl = document.getElementById("status");
     const metaEl = document.getElementById("meta");
     const barWrap = document.getElementById("bar-wrap");
     const bar = document.getElementById("bar");
+    const fileInput = document.getElementById("file");
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0f1419);
@@ -213,50 +216,88 @@
     }
 
     const loader = new STLLoader();
-    barWrap.hidden = false;
-    setStatus("Downloading STL (≈34 MB)…");
 
-    loader.load(
-      STL_URL,
-      (geometry) => {
-        geometry.computeBoundingBox();
-        geometry.computeVertexNormals();
+    function showGeometry(geometry, filename) {
+      geometry.computeBoundingBox();
+      geometry.computeVertexNormals();
 
-        mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
-        fitCamera(mesh);
+      if (mesh) {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+      }
 
-        const tris = geometry.index
-          ? geometry.index.count / 3
-          : geometry.attributes.position.count / 3;
-        const box = geometry.boundingBox;
-        const size = new THREE.Vector3();
-        box.getSize(size);
+      mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+      fitCamera(mesh);
 
-        metaEl.innerHTML =
-          `${formatNum(Math.round(tris))} triangles<br>` +
-          `bbox ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)}`;
-        barWrap.hidden = true;
-        setStatus("Ready", "ready");
-      },
-      (ev) => {
-        if (!ev.total) {
-          setStatus(`Loading… ${Math.round(ev.loaded / 1e6)} MB`);
-          return;
-        }
+      const tris = geometry.index
+        ? geometry.index.count / 3
+        : geometry.attributes.position.count / 3;
+      const box = geometry.boundingBox;
+      const size = new THREE.Vector3();
+      box.getSize(size);
+
+      metaEl.innerHTML =
+        `${filename}<br>` +
+        `${formatNum(Math.round(tris))} triangles · ` +
+        `bbox ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)}`;
+      barWrap.hidden = true;
+      setStatus("Ready", "ready");
+    }
+
+    function loadFile(file) {
+      if (!file) return;
+      barWrap.hidden = false;
+      bar.style.width = "0%";
+      setStatus(`Reading ${file.name}…`);
+
+      const reader = new FileReader();
+      reader.onprogress = (ev) => {
+        if (!ev.lengthComputable) return;
         const pct = Math.min(100, (100 * ev.loaded) / ev.total);
         bar.style.width = `${pct}%`;
-        setStatus(`Loading… ${pct.toFixed(0)}%`);
-      },
-      (err) => {
-        console.error(err);
+        setStatus(`Reading… ${pct.toFixed(0)}%`);
+      };
+      reader.onerror = () => {
         barWrap.hidden = true;
-        setStatus(
-          "Failed to load STL. Serve this folder over HTTP (not file://), e.g. python3 -m http.server",
-          "error"
-        );
-      }
-    );
+        setStatus("Failed to read file", "error");
+      };
+      reader.onload = () => {
+        try {
+          const geometry = loader.parse(reader.result);
+          showGeometry(geometry, file.name);
+        } catch (err) {
+          console.error(err);
+          barWrap.hidden = true;
+          setStatus("Could not parse STL", "error");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    document.getElementById("btn-open").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      loadFile(file);
+      fileInput.value = "";
+    });
+
+    // Drag & drop onto the page
+    ;["dragenter", "dragover"].forEach((type) => {
+      window.addEventListener(type, (e) => {
+        e.preventDefault();
+        setStatus("Drop STL to open");
+      });
+    });
+    window.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      if (!mesh) setStatus("Choose an STL file to view");
+    });
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
 
     document.getElementById("color").addEventListener("input", (e) => {
       material.color.set(e.target.value);

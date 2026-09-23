@@ -1,6 +1,6 @@
 # PDA-VR
 
-Interactive 3D viewer for `3794038717_PDA_VSEG.stl`.
+Interactive STL viewer (Three.js). **No mesh files are hosted in this repo** — open an STL from your own computer (or drag & drop).
 
 ## View online
 
@@ -9,6 +9,8 @@ Enable GitHub Pages: **Settings → Pages → Branch `main` / root (`/`) → Sav
 Then open:
 
 https://olnsnlyy.github.io/PDA-VR/
+
+Click **Open STL…** and pick your local `.stl` file.
 
 ## Local
 
