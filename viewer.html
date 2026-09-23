@@ -88,10 +88,10 @@
 
   <div class="panel top-left">
     <h1>PDA VSEG</h1>
-    <div class="sub" id="meta">Open an STL file from your computer</div>
+    <div class="sub" id="meta">Loading sample.stl…</div>
     <div class="progress" id="bar-wrap" hidden><span id="bar"></span></div>
     <div class="row" style="margin-top:12px">
-      <button id="btn-open" type="button">Open STL…</button>
+      <button id="btn-open" type="button">Open other STL…</button>
       <input id="file" type="file" accept=".stl,model/stl,application/sla" hidden />
     </div>
     <div class="row">
@@ -102,7 +102,7 @@
       <label for="opacity">Opacity</label>
       <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
     </div>
-    <div class="hint">STL stays on your PC — nothing is uploaded. Drag to rotate · scroll to zoom · right-drag to pan</div>
+    <div class="hint">Drag to rotate · scroll to zoom · right-drag to pan</div>
   </div>
 
   <div class="panel top-right">
@@ -112,7 +112,7 @@
     <button id="btn-fit" type="button">Fit to view</button>
   </div>
 
-  <div id="status">Choose an STL file to view</div>
+  <div id="status">Loading sample.stl…</div>
 
   <script type="importmap">
   {
@@ -291,13 +291,37 @@
     });
     window.addEventListener("dragleave", (e) => {
       e.preventDefault();
-      if (!mesh) setStatus("Choose an STL file to view");
+      if (!mesh) setStatus("Loading sample.stl…");
+      else setStatus("Ready", "ready");
     });
     window.addEventListener("drop", (e) => {
       e.preventDefault();
       const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (file) loadFile(file);
     });
+
+    // Default: load hosted sample.stl
+    const STL_URL = "./sample.stl";
+    barWrap.hidden = false;
+    setStatus("Downloading sample.stl…");
+    loader.load(
+      STL_URL,
+      (geometry) => showGeometry(geometry, "sample.stl"),
+      (ev) => {
+        if (!ev.total) {
+          setStatus(`Loading… ${Math.round(ev.loaded / 1e6)} MB`);
+          return;
+        }
+        const pct = Math.min(100, (100 * ev.loaded) / ev.total);
+        bar.style.width = `${pct}%`;
+        setStatus(`Loading… ${pct.toFixed(0)}%`);
+      },
+      (err) => {
+        console.error(err);
+        barWrap.hidden = true;
+        setStatus("Failed to load sample.stl — try Open other STL…", "error");
+      }
+    );
 
     document.getElementById("color").addEventListener("input", (e) => {
       material.color.set(e.target.value);
